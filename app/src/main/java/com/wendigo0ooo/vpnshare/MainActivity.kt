@@ -1,17 +1,23 @@
 package com.wendigo0ooo.vpnshare
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -36,6 +42,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resetDevices: MaterialButton
 
     private var lastDeviceSig = ""
+
+    private lateinit var wifiManager: WifiManager
+    private var pendingStartMode: String? = null
+    private var wifiReceiver: BroadcastReceiver? = null
 
     private var prevDown = 0L
     private var prevUp = 0L
@@ -71,6 +81,8 @@ class MainActivity : AppCompatActivity() {
             updateUi()
         }
 
+        wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
         requestPermissions()
 
         toggleButton.setOnClickListener {
@@ -79,21 +91,114 @@ class MainActivity : AppCompatActivity() {
                     Intent(this, ShareService::class.java).setAction(ShareService.ACTION_STOP)
                 )
             } else {
-                lastDeviceSig = ""
                 val mode = when (modeGroup.checkedButtonId) {
                     R.id.modeHotspot -> ShareState.MODE_HOTSPOT
                     R.id.modeLan -> ShareState.MODE_LAN
                     else -> ShareState.MODE_P2P
                 }
-                ContextCompat.startForegroundService(
-                    this,
-                    Intent(this, ShareService::class.java)
-                        .setAction(ShareService.ACTION_START)
-                        .putExtra(ShareService.EXTRA_MODE, mode)
-                )
+                beginStart(mode)
             }
             handler.postDelayed({ updateUi() }, 400)
         }
+    }
+
+    private fun beginStart(mode: String) {
+        lastDeviceSig = ""
+        ShareState.error = null
+        if (mode == ShareState.MODE_P2P && !wifiManager.isWifiEnabled) {
+            promptEnableWifi(mode)
+        } else {
+            startSharing(mode)
+        }
+    }
+
+    private fun startSharing(mode: String) {
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, ShareService::class.java)
+                .setAction(ShareService.ACTION_START)
+                .putExtra(ShareService.EXTRA_MODE, mode)
+        )
+    }
+
+    private fun promptEnableWifi(mode: String) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.wifi_off_title)
+            .setMessage(R.string.wifi_off_message)
+            .setPositiveButton(R.string.wifi_enable) { _, _ -> enableWifi(mode) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun enableWifi(mode: String) {
+        pendingStartMode = mode
+        if (Build.VERSION.SDK_INT >= 29) {
+            // Android 10+ uygulamaya Wi-Fi'yi doğrudan açma izni vermez;
+            // sistemin Wi-Fi panelini gösteririz, kullanıcı açar.
+            openWifiPanel()
+        } else {
+            @Suppress("DEPRECATION")
+            val ok = wifiManager.setWifiEnabled(true)
+            if (ok) {
+                registerWifiReceiver()
+            } else {
+                openWifiPanel()
+            }
+        }
+    }
+
+    private fun openWifiPanel() {
+        registerWifiReceiver()
+        val panel = if (Build.VERSION.SDK_INT >= 29) {
+            Intent(Settings.Panel.ACTION_WIFI)
+        } else {
+            Intent(Settings.ACTION_WIFI_SETTINGS)
+        }
+        try {
+            panel.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(panel)
+        } catch (_: Exception) {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_WIFI_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun registerWifiReceiver() {
+        if (wifiReceiver != null) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (wifiManager.isWifiEnabled) {
+                    unregisterWifiReceiver()
+                    val mode = pendingStartMode
+                    pendingStartMode = null
+                    if (mode != null) {
+                        startSharing(mode)
+                        handler.post({ updateUi() })
+                    }
+                }
+            }
+        }
+        wifiReceiver = receiver
+        ContextCompat.registerReceiver(
+            this,
+            receiver,
+            IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    private fun unregisterWifiReceiver() {
+        wifiReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {
+            }
+        }
+        wifiReceiver = null
     }
 
     override fun onResume() {
@@ -104,6 +209,11 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(refresh)
+    }
+
+    override fun onDestroy() {
+        unregisterWifiReceiver()
+        super.onDestroy()
     }
 
     private fun requestPermissions() {

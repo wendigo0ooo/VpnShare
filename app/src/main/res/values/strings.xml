@@ -35,4 +35,9 @@
 
     <string name="notif_title">VPN Share çalışıyor</string>
     <string name="notif_preparing">Hazırlanıyor…</string>
+
+    <string name="wifi_off_title">Wi-Fi kapalı</string>
+    <string name="wifi_off_message">Wi-Fi Direct için Wi-Fi’nin açık olması gerekiyor. Şimdi açmak ister misin?</string>
+    <string name="wifi_enable">Wi-Fi’yi aç</string>
+    <string name="cancel">İptal</string>
 </resources>

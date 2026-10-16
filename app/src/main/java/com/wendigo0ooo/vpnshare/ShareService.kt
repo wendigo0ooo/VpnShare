@@ -154,7 +154,7 @@ class ShareService : Service() {
             }
 
             override fun onFailure(reason: Int) {
-                fail("Wi-Fi Direct grubu kurulamadı (kod $reason). Wi-Fi açık mı?")
+                fail("Wi-Fi Direct başlatılamadı (kod $reason). Tekrar deneyin.")
             }
         })
     }
