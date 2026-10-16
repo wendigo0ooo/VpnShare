@@ -61,8 +61,14 @@ class ShareService : Service() {
     }
 
     private fun startLan() {
-        val ip = Net.bestIp() ?: "0.0.0.0"
-        startEngine(ip)
+        Thread { startEngine(resolveShareIp(ShareState.MODE_LAN)) }.start()
+    }
+
+    private fun resolveShareIp(mode: String): String = when (mode) {
+        ShareState.MODE_P2P -> Net.waitForPrefixes(listOf("p2p"), 6000) ?: "192.168.49.1"
+        ShareState.MODE_HOTSPOT ->
+            Net.waitForPrefixes(listOf("ap", "swlan", "wlan"), 6000) ?: "192.168.43.1"
+        else -> Net.bestIp() ?: "0.0.0.0"
     }
 
     private fun startEngine(ip: String) {
@@ -106,10 +112,7 @@ class ShareService : Service() {
                         }
                         ShareState.ssid = ssid
                         ShareState.password = pass
-                        Handler(mainLooper).postDelayed({
-                            val ip = Net.bestIp() ?: "192.168.43.1"
-                            startEngine(ip)
-                        }, 1500)
+                        Thread { startEngine(resolveShareIp(ShareState.MODE_HOTSPOT)) }.start()
                     }
 
                     override fun onFailed(reason: Int) {
@@ -143,8 +146,7 @@ class ShareService : Service() {
                         ShareState.ssid = group.networkName
                         ShareState.password = group.passphrase
                     }
-                    val ip = Net.bestIp() ?: "192.168.49.1"
-                    startEngine(ip)
+                    Thread { startEngine(resolveShareIp(ShareState.MODE_P2P)) }.start()
                 }
             }
 
