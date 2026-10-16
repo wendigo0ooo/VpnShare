@@ -6,13 +6,13 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class Socks5Server(private val port: Int) {
 
     @Volatile
     private var running = false
     private var serverSocket: ServerSocket? = null
-    private var acceptThread: Thread? = null
     private val pool = Executors.newCachedThreadPool()
 
     fun start() {
@@ -21,20 +21,20 @@ class Socks5Server(private val port: Int) {
         ss.bind(InetSocketAddress("0.0.0.0", port))
         serverSocket = ss
         running = true
-        acceptThread = Thread {
+        Thread {
             while (running) {
                 try {
                     val client = ss.accept()
-                    pool.execute { handle(client) }
+                    val ip = client.inetAddress?.hostAddress
+                    pool.execute { handle(client, ip) }
                 } catch (_: Exception) {
                     if (!running) break
                 }
             }
-        }.also {
-            it.isDaemon = true
-            it.name = "socks5-accept"
-            it.start()
-        }
+        }.apply {
+            isDaemon = true
+            name = "socks5-accept"
+        }.start()
     }
 
     fun stop() {
@@ -43,7 +43,12 @@ class Socks5Server(private val port: Int) {
         pool.shutdownNow()
     }
 
-    private fun handle(client: Socket) {
+    private fun handle(client: Socket, ip: String?) {
+        if (ip != null) ClientStats.onOpen(ip)
+        val counted = AtomicBoolean(false)
+        val finish: () -> Unit = {
+            if (counted.compareAndSet(false, true) && ip != null) ClientStats.onClose(ip)
+        }
         var relayed = false
         try {
             client.tcpNoDelay = true
@@ -51,25 +56,16 @@ class Socks5Server(private val port: Int) {
             val outs = client.getOutputStream()
 
             val version = ins.read()
-            if (version != 5) {
-                Relay.closeQuietly(client)
-                return
-            }
+            if (version != 5) return
             val nMethods = ins.read()
-            if (nMethods <= 0) {
-                Relay.closeQuietly(client)
-                return
-            }
+            if (nMethods <= 0) return
             val methods = ByteArray(nMethods)
             readFully(ins, methods)
             outs.write(byteArrayOf(5, 0))
             outs.flush()
 
             val rVersion = ins.read()
-            if (rVersion != 5) {
-                Relay.closeQuietly(client)
-                return
-            }
+            if (rVersion != 5) return
             val cmd = ins.read()
             ins.read() // reserved
             val atyp = ins.read()
@@ -83,10 +79,7 @@ class Socks5Server(private val port: Int) {
                 }
                 3 -> {
                     val len = ins.read()
-                    if (len <= 0) {
-                        Relay.closeQuietly(client)
-                        return
-                    }
+                    if (len <= 0) return
                     val b = ByteArray(len)
                     readFully(ins, b)
                     host = String(b, Charsets.US_ASCII)
@@ -96,10 +89,7 @@ class Socks5Server(private val port: Int) {
                     readFully(ins, b)
                     host = InetAddress.getByAddress(b).hostAddress ?: ""
                 }
-                else -> {
-                    Relay.closeQuietly(client)
-                    return
-                }
+                else -> return
             }
 
             val portHi = ins.read()
@@ -109,16 +99,15 @@ class Socks5Server(private val port: Int) {
             if (cmd != 1) {
                 outs.write(byteArrayOf(5, 7, 0, 1, 0, 0, 0, 0, 0, 0))
                 outs.flush()
-                Relay.closeQuietly(client)
                 return
             }
 
             if (host.isEmpty()) {
                 outs.write(byteArrayOf(5, 4, 0, 1, 0, 0, 0, 0, 0, 0))
                 outs.flush()
-                Relay.closeQuietly(client)
                 return
             }
+            if (ip != null) ClientStats.noteHost(ip, host)
 
             val remote = Socket()
             try {
@@ -126,7 +115,6 @@ class Socks5Server(private val port: Int) {
             } catch (_: Exception) {
                 outs.write(byteArrayOf(5, 5, 0, 1, 0, 0, 0, 0, 0, 0))
                 outs.flush()
-                Relay.closeQuietly(client)
                 return
             }
             remote.tcpNoDelay = true
@@ -135,9 +123,13 @@ class Socks5Server(private val port: Int) {
             outs.flush()
 
             relayed = true
-            Relay.pipe(client, remote)
+            Relay.pipe(client, remote, null, ip) { finish() }
         } catch (_: Exception) {
-            if (!relayed) Relay.closeQuietly(client)
+        } finally {
+            if (!relayed) {
+                Relay.closeQuietly(client)
+                finish()
+            }
         }
     }
 

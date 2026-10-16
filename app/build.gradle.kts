@@ -11,8 +11,8 @@ android {
         applicationId = "com.wendigo0ooo.vpnshare"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.1"
+        versionCode = 4
+        versionName = "2.2"
     }
 
     buildTypes {
@@ -34,5 +34,6 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
     implementation("com.google.zxing:core:3.5.3")
 }

@@ -8,13 +8,13 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class HttpProxyServer(private val port: Int) {
 
     @Volatile
     private var running = false
     private var serverSocket: ServerSocket? = null
-    private var acceptThread: Thread? = null
     private val pool = Executors.newCachedThreadPool()
 
     fun start() {
@@ -23,20 +23,20 @@ class HttpProxyServer(private val port: Int) {
         ss.bind(InetSocketAddress("0.0.0.0", port))
         serverSocket = ss
         running = true
-        acceptThread = Thread {
+        Thread {
             while (running) {
                 try {
                     val client = ss.accept()
-                    pool.execute { handle(client) }
+                    val ip = client.inetAddress?.hostAddress
+                    pool.execute { handle(client, ip) }
                 } catch (_: Exception) {
                     if (!running) break
                 }
             }
-        }.also {
-            it.isDaemon = true
-            it.name = "http-proxy-accept"
-            it.start()
-        }
+        }.apply {
+            isDaemon = true
+            name = "http-accept"
+        }.start()
     }
 
     fun stop() {
@@ -45,21 +45,22 @@ class HttpProxyServer(private val port: Int) {
         pool.shutdownNow()
     }
 
-    private fun handle(client: Socket) {
+    private fun handle(client: Socket, ip: String?) {
+        if (ip != null) ClientStats.onOpen(ip)
+        val counted = AtomicBoolean(false)
+        val finish: () -> Unit = {
+            if (counted.compareAndSet(false, true) && ip != null) ClientStats.onClose(ip)
+        }
         var relayed = false
         try {
             client.tcpNoDelay = true
             val ins = BufferedInputStream(client.getInputStream())
             val outs = client.getOutputStream()
 
-            val requestLine = readLine(ins) ?: run {
-                Relay.closeQuietly(client)
-                return
-            }
+            val requestLine = readLine(ins) ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) {
                 writeError(outs, 400, "Bad Request")
-                Relay.closeQuietly(client)
                 return
             }
             val method = parts[0]
@@ -77,19 +78,19 @@ class HttpProxyServer(private val port: Int) {
 
             if (method.equals("CONNECT", ignoreCase = true)) {
                 val (host, dstPort) = splitHostPort(target, 443)
+                if (ip != null) ClientStats.noteHost(ip, host)
                 val remote = Socket()
                 try {
                     remote.connect(InetSocketAddress(host, dstPort), 15000)
                 } catch (_: Exception) {
                     writeError(outs, 502, "Bad Gateway")
-                    Relay.closeQuietly(client)
                     return
                 }
                 remote.tcpNoDelay = true
                 outs.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
                 outs.flush()
                 relayed = true
-                Relay.pipe(client, remote, ins)
+                Relay.pipe(client, remote, ins, ip) { finish() }
                 return
             }
 
@@ -97,8 +98,12 @@ class HttpProxyServer(private val port: Int) {
             val host = uri.host
             if (host == null) {
                 writeError(outs, 400, "Bad Request")
-                Relay.closeQuietly(client)
                 return
+            }
+            if (ip != null) {
+                ClientStats.noteHost(ip, host)
+                headers.firstOrNull { it.first.equals("User-Agent", ignoreCase = true) }
+                    ?.let { ClientStats.noteUserAgent(ip, it.second) }
             }
             val dstPort = if (uri.port != -1) uri.port else 80
             val path = (if (uri.rawPath.isNullOrEmpty()) "/" else uri.rawPath) +
@@ -109,7 +114,6 @@ class HttpProxyServer(private val port: Int) {
                 remote.connect(InetSocketAddress(host, dstPort), 15000)
             } catch (_: Exception) {
                 writeError(outs, 502, "Bad Gateway")
-                Relay.closeQuietly(client)
                 return
             }
             remote.tcpNoDelay = true
@@ -128,9 +132,13 @@ class HttpProxyServer(private val port: Int) {
             rout.flush()
 
             relayed = true
-            Relay.pipe(client, remote, ins)
+            Relay.pipe(client, remote, ins, ip) { finish() }
         } catch (_: Exception) {
-            if (!relayed) Relay.closeQuietly(client)
+        } finally {
+            if (!relayed) {
+                Relay.closeQuietly(client)
+                finish()
+            }
         }
     }
 

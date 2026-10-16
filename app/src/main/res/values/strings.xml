@@ -2,18 +2,18 @@
 <resources>
     <string name="app_name">VPN Share</string>
     <string name="title">Bağlantını Paylaş</string>
-    <string name="desc">Telefonundaki interneti (VPN dâhil) aynı ağdaki cihazlarla paylaş. NetShare mantığı: Wi-Fi Direct/hotspot kurulur, üstünde proxy çalışır.</string>
+    <string name="desc">İnternetini (VPN dâhil) aynı ağdaki cihazlarla paylaş.</string>
 
-    <string name="mode_p2p">Wi-Fi Direct (NetShare yöntemi)</string>
-    <string name="mode_hotspot">Yerel Hotspot</string>
-    <string name="mode_lan">Aynı Ağ (mevcut Wi-Fi)</string>
+    <string name="mode_p2p">Wi-Fi Direct</string>
+    <string name="mode_hotspot">Hotspot</string>
+    <string name="mode_lan">Aynı Ağ</string>
 
     <string name="start">BAŞLAT</string>
     <string name="stop">DURDUR</string>
 
-    <string name="status_running">Durum: ÇALIŞIYOR</string>
-    <string name="status_stopped">Durum: durduruldu</string>
-    <string name="status_starting">Durum: başlatılıyor…</string>
+    <string name="status_running">Çalışıyor</string>
+    <string name="status_stopped">Durduruldu</string>
+    <string name="status_starting">Başlatılıyor…</string>
 
     <string name="label_ssid">Ağ adı (SSID): %1$s</string>
     <string name="label_pass">Şifre: %1$s</string>
@@ -21,9 +21,13 @@
     <string name="label_socks">SOCKS5 proxy: %1$s:%2$d</string>
     <string name="qr_hint">Ağa bağlanmak için QR kodu okut (proxy’yi ayrıca elle gir).</string>
 
-    <string name="howto">Nasıl bağlanılır:\n1) İstemci cihazı yukarıdaki ağa bağla.\n2) Cihazın Wi-Fi proxy ayarını MANUEL yap.\n3) Adres ve portu yukarıdaki gibi gir.\n\nVPN paylaşımı için VPN uygulamanda “LAN/Local network” erişimini aç.</string>
+    <string name="devices_title">Bağlı cihazlar</string>
+    <string name="devices_summary">%1$d aktif · toplam %2$d cihaz</string>
+    <string name="devices_empty">Henüz bağlanan cihaz yok.</string>
+    <string name="conn_info">%1$s • %2$s\n↓ %3$s   ↑ %4$s   • %5$d bağlantı</string>
+
+    <string name="howto">Nasıl bağlanılır:\n1) İstemci cihazı gösterilen ağa bağla.\n2) Cihazın Wi-Fi proxy ayarını MANUEL yap.\n3) Adres ve portu yukarıdaki gibi gir.\n\nVPN paylaşımı için VPN uygulamanda “LAN/yerel ağ” erişimini aç.</string>
 
     <string name="notif_title">VPN Share çalışıyor</string>
     <string name="notif_preparing">Hazırlanıyor…</string>
-    <string name="perm_needed">Wi-Fi izinleri gerekli.</string>
 </resources>

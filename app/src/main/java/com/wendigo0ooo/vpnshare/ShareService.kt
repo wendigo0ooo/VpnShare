@@ -48,6 +48,7 @@ class ShareService : Service() {
     private fun startMode(mode: String) {
         stopEngine()
         stopHotspotAndP2p()
+        ClientStats.reset()
         ShareState.reset()
         ShareState.mode = mode
         ShareState.preparing = true
@@ -191,6 +192,7 @@ class ShareService : Service() {
         stopEngine()
         stopHotspotAndP2p()
         ShareState.reset()
+        ClientStats.reset()
     }
 
     override fun onDestroy() {
