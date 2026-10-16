@@ -42,6 +42,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resetDevices: MaterialButton
 
     private var lastDeviceSig = ""
+    private var lastQrText: String? = null
+    private var lastQrBitmap: Bitmap? = null
 
     private lateinit var wifiManager: WifiManager
     private var pendingStartMode: String? = null
@@ -282,9 +284,16 @@ class MainActivity : AppCompatActivity() {
         val pass = ShareState.password
         if (running && ssid != null && ShareState.mode != ShareState.MODE_LAN) {
             val qrText = "WIFI:T:WPA;S:${escapeWifi(ssid)};P:${escapeWifi(pass ?: "")};;"
-            val bmp = qrBitmap(qrText, 512)
+            if (qrText != lastQrText) {
+                lastQrText = qrText
+                lastQrBitmap = qrBitmap(qrText, 512)
+            }
+            val bmp = lastQrBitmap
             if (bmp != null) {
-                qrImage.setImageBitmap(bmp)
+                if (qrImage.tag !== bmp) {
+                    qrImage.setImageBitmap(bmp)
+                    qrImage.tag = bmp
+                }
                 qrImage.visibility = ImageView.VISIBLE
                 qrHint.visibility = TextView.VISIBLE
             } else {
@@ -324,6 +333,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun hideQr() {
         qrImage.setImageDrawable(null)
+        qrImage.tag = null
         qrImage.visibility = ImageView.GONE
         qrHint.visibility = TextView.GONE
     }
