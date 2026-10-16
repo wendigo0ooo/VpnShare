@@ -13,7 +13,9 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
+import java.util.Locale
 
 class ShareService : Service() {
 
@@ -24,6 +26,20 @@ class ShareService : Service() {
 
     @Volatile
     private var generation = 0
+
+    @Volatile
+    private var preserveErrorOnDestroy = false
+
+    private val notifHandler = Handler(Looper.getMainLooper())
+
+    private val notifTick = object : Runnable {
+        override fun run() {
+            if (ShareState.running) {
+                updateNotification()
+                notifHandler.postDelayed(this, 3000)
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -54,6 +70,7 @@ class ShareService : Service() {
 
     private fun startMode(mode: String) {
         generation++
+        preserveErrorOnDestroy = false
         stopEngine()
         stopHotspotAndP2p()
         ConnectionRegistry.reset()
@@ -109,6 +126,9 @@ class ShareService : Service() {
         ShareState.preparing = false
         ShareState.running = true
         updateNotification()
+        notifHandler.removeCallbacks(notifTick)
+        notifHandler.post(notifTick)
+        startNetMonitor(gen, ip)
     }
 
     private fun startHotspot() {
@@ -156,6 +176,7 @@ class ShareService : Service() {
                     }
 
                     override fun onStopped() {
+                        if (gen == generation) onNetworkLost()
                     }
                 },
                 Handler(mainLooper)
@@ -207,7 +228,55 @@ class ShareService : Service() {
         ShareState.error = message
         ShareState.preparing = false
         ShareState.running = false
+        notifHandler.removeCallbacks(notifTick)
         updateNotification()
+    }
+
+    private fun startNetMonitor(gen: Int, ip: String) {
+        Thread {
+            while (gen == generation && ShareState.running) {
+                try {
+                    Thread.sleep(4000)
+                } catch (_: InterruptedException) {
+                    return@Thread
+                }
+                if (gen != generation || !ShareState.running) return@Thread
+                if (Net.allIpv4().none { it.second == ip }) {
+                    try {
+                        Thread.sleep(2500)
+                    } catch (_: InterruptedException) {
+                        return@Thread
+                    }
+                    if (gen != generation || !ShareState.running) return@Thread
+                    if (Net.allIpv4().none { it.second == ip }) {
+                        onNetworkLost()
+                        return@Thread
+                    }
+                }
+            }
+        }.apply {
+            isDaemon = true
+            name = "vpnshare-net-monitor"
+        }.start()
+    }
+
+    private fun onNetworkLost() {
+        if (!ShareState.running && !ShareState.preparing) return
+        preserveErrorOnDestroy = true
+        stopEverything()
+        ShareState.error = "Ağ bağlantısı kesildi, paylaşım durduruldu"
+        updateNotification()
+        stopSelf()
+    }
+
+    private fun fmt(bytes: Long): String {
+        val kb = 1024.0
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024L * 1024 -> String.format(Locale.US, "%.1f KB", bytes / kb)
+            bytes < 1024L * 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / (kb * 1024))
+            else -> String.format(Locale.US, "%.2f GB", bytes / (kb * 1024 * 1024))
+        }
     }
 
     private fun stopEngine() {
@@ -236,6 +305,7 @@ class ShareService : Service() {
 
     private fun stopEverything() {
         generation++
+        notifHandler.removeCallbacks(notifTick)
         stopEngine()
         stopHotspotAndP2p()
         ConnectionRegistry.reset()
@@ -246,6 +316,9 @@ class ShareService : Service() {
 
     override fun onDestroy() {
         stopEverything()
+        if (preserveErrorOnDestroy) {
+            ShareState.error = "Ağ bağlantısı kesildi, paylaşım durduruldu"
+        }
         stopForegroundCompat()
         super.onDestroy()
     }
@@ -316,8 +389,11 @@ class ShareService : Service() {
             ShareState.error != null -> ShareState.error
             ShareState.running -> {
                 val port = if (ShareState.httpOk) ShareState.httpPort else ShareState.socksPort
+                val down = fmt(ClientStats.totalDown())
+                val up = fmt(ClientStats.totalUp())
                 "${modeLabel()} • ${ShareState.proxyIp}:$port" +
-                    (ShareState.ssid?.let { " • $it" } ?: "")
+                    (ShareState.ssid?.let { " • $it" } ?: "") +
+                    "\n↓ $down   ↑ $up"
             }
             else -> getString(R.string.notif_preparing)
         }
@@ -325,8 +401,10 @@ class ShareService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notif_title))
             .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(R.drawable.ic_stat_notify)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
             .addAction(0, getString(R.string.stop), stopIntent)
             .build()
