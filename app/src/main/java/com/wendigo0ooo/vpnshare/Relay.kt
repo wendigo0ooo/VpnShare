@@ -27,6 +27,7 @@ object Relay {
 
         Thread {
             copyStream(cin, rout) { if (clientIp != null) ClientStats.addUp(clientIp, it) }
+            shutdownOutput(remote)
             closeQuietly(remote)
             closeQuietly(client)
             finish()
@@ -34,6 +35,7 @@ object Relay {
 
         Thread {
             copyStream(rin, cout) { if (clientIp != null) ClientStats.addDown(clientIp, it) }
+            shutdownOutput(client)
             closeQuietly(client)
             closeQuietly(remote)
             finish()
@@ -50,6 +52,13 @@ object Relay {
                 to.flush()
                 onBytes(n.toLong())
             }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun shutdownOutput(socket: Socket) {
+        try {
+            if (!socket.isOutputShutdown) socket.shutdownOutput()
         } catch (_: Exception) {
         }
     }

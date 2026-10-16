@@ -17,6 +17,8 @@ class HttpProxyServer(private val port: Int) {
     private var serverSocket: ServerSocket? = null
     private val pool = Executors.newCachedThreadPool()
 
+    val boundPort: Int get() = serverSocket?.localPort ?: -1
+
     fun start() {
         val ss = ServerSocket()
         ss.reuseAddress = true
@@ -105,8 +107,10 @@ class HttpProxyServer(private val port: Int) {
             }
 
             val uri = URI(target)
-            val host = uri.host
-            if (host == null) {
+            val hostHeader = headers.firstOrNull { it.first.equals("Host", ignoreCase = true) }
+                ?.second?.substringBefore(':')?.trim()
+            val host = uri.host?.takeIf { it.isNotEmpty() } ?: hostHeader
+            if (host.isNullOrEmpty()) {
                 writeError(outs, 400, "Bad Request")
                 return
             }

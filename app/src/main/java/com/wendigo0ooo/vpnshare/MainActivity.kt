@@ -267,10 +267,14 @@ class MainActivity : AppCompatActivity() {
         val ip = ShareState.proxyIp
         ShareState.ssid?.let { sb.append(getString(R.string.label_ssid, it)).append('\n') }
         ShareState.password?.let { sb.append(getString(R.string.label_pass, it)).append('\n') }
-        if (ip != null) {
+        if (ip != null && ip != "0.0.0.0" && (ShareState.httpOk || ShareState.socksOk)) {
             sb.append('\n')
-            sb.append(getString(R.string.label_http, ip, ShareState.HTTP_PORT)).append('\n')
-            sb.append(getString(R.string.label_socks, ip, ShareState.SOCKS_PORT)).append('\n')
+            if (ShareState.httpOk) {
+                sb.append(getString(R.string.label_http, ip, ShareState.httpPort)).append('\n')
+            }
+            if (ShareState.socksOk) {
+                sb.append(getString(R.string.label_socks, ip, ShareState.socksPort)).append('\n')
+            }
         }
         infoText.text = sb.toString().trimEnd()
 

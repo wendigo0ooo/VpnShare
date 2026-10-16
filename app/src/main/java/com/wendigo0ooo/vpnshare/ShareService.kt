@@ -40,9 +40,13 @@ class ShareService : Service() {
                 startForegroundCompat()
                 val mode = intent.getStringExtra(EXTRA_MODE) ?: ShareState.MODE_P2P
                 startMode(mode)
+                return START_STICKY
             }
         }
-        return START_STICKY
+        // Sistem servisi intentsiz yeniden başlattı: mod bilinmiyor, güvenli şekilde kapat.
+        // Aksi halde foreground tipi için startForeground çağrılmadan çökme olabilir.
+        stopSelf()
+        return START_NOT_STICKY
     }
 
     private fun startMode(mode: String) {
@@ -70,17 +74,28 @@ class ShareService : Service() {
     private fun resolveShareIp(mode: String): String = when (mode) {
         ShareState.MODE_P2P -> Net.waitForPrefixes(listOf("p2p"), 6000) ?: "192.168.49.1"
         ShareState.MODE_HOTSPOT ->
-            Net.waitForPrefixes(listOf("ap", "swlan", "wlan"), 6000) ?: "192.168.43.1"
-        else -> Net.bestIp() ?: "0.0.0.0"
+            Net.waitForPrefixes(HOTSPOT_PREFIXES, 6000) ?: "192.168.43.1"
+        else -> Net.bestIp() ?: ""
     }
 
     private fun startEngine(ip: String) {
-        try {
-            engine = ProxyEngine(ShareState.HTTP_PORT, ShareState.SOCKS_PORT).also { it.start() }
-        } catch (_: Exception) {
+        if (ip.isBlank() || ip == "0.0.0.0") {
+            fail("Uygun ağ arayüzü bulunamadı. Wi-Fi/hotspot açık mı?")
+            return
+        }
+        val eng = ProxyEngine(ShareState.httpPort, ShareState.socksPort)
+        eng.start()
+        engine = eng
+        if (!eng.httpReady && !eng.socksReady) {
             engine = null
+            fail("Proxy başlatılamadı: portlar kullanımda olabilir")
+            return
         }
         ShareState.proxyIp = ip
+        ShareState.httpOk = eng.httpReady
+        ShareState.socksOk = eng.socksReady
+        if (eng.httpReady) ShareState.httpPort = eng.httpPort
+        if (eng.socksReady) ShareState.socksPort = eng.socksPort
         ShareState.preparing = false
         ShareState.running = true
         updateNotification()
@@ -269,9 +284,11 @@ class ShareService : Service() {
 
         val text = when {
             ShareState.error != null -> ShareState.error
-            ShareState.running ->
-                "${modeLabel()} • ${ShareState.proxyIp}:${ShareState.HTTP_PORT}" +
+            ShareState.running -> {
+                val port = if (ShareState.httpOk) ShareState.httpPort else ShareState.socksPort
+                "${modeLabel()} • ${ShareState.proxyIp}:$port" +
                     (ShareState.ssid?.let { " • $it" } ?: "")
+            }
             else -> getString(R.string.notif_preparing)
         }
 
@@ -292,5 +309,8 @@ class ShareService : Service() {
 
         private const val CHANNEL_ID = "vpnshare"
         private const val NOTIF_ID = 1
+
+        private val HOTSPOT_PREFIXES =
+            listOf("ap", "swlan", "softap", "wlan1", "rndis", "usb", "bridge", "br", "wlan")
     }
 }

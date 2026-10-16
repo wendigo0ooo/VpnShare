@@ -1,11 +1,15 @@
 package com.wendigo0ooo.vpnshare
 
+import java.net.DatagramSocket
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.NetworkInterface
 
 object Net {
 
-    private val preferredOrder = listOf("p2p", "ap", "swlan", "wlan", "eth", "wl")
+    private val preferredOrder = listOf(
+        "p2p", "ap", "swlan", "softap", "wlan1", "wlan", "eth", "wl", "rndis", "usb", "br", "bridge"
+    )
     private val excluded = listOf(
         "tun", "rmnet", "ccmni", "ppp", "dummy", "lo", "clat", "sit", "radio", "pdp", "ip6tnl"
     )
@@ -54,10 +58,26 @@ object Net {
 
     fun bestIp(): String? {
         val all = allIpv4()
-        if (all.isEmpty()) return null
         for (prefix in preferredOrder) {
             all.firstOrNull { it.first.startsWith(prefix) }?.let { return it.second }
         }
-        return all.first().second
+        all.firstOrNull()?.let { return it.second }
+        return routeBasedIp()
+    }
+
+    fun routeBasedIp(): String? {
+        for (probe in listOf("192.168.0.1", "8.8.8.8")) {
+            try {
+                DatagramSocket().use { socket ->
+                    socket.connect(InetAddress.getByName(probe), 53)
+                    val local = socket.localAddress
+                    if (local is Inet4Address && !local.isLoopbackAddress && !local.isAnyLocalAddress) {
+                        return local.hostAddress
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return null
     }
 }

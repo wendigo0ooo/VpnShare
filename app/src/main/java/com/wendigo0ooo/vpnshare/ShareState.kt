@@ -29,6 +29,18 @@ object ShareState {
     @Volatile
     var error: String? = null
 
+    @Volatile
+    var httpPort = HTTP_PORT
+
+    @Volatile
+    var socksPort = SOCKS_PORT
+
+    @Volatile
+    var httpOk = false
+
+    @Volatile
+    var socksOk = false
+
     fun reset() {
         running = false
         preparing = false
@@ -36,5 +48,9 @@ object ShareState {
         password = null
         proxyIp = null
         error = null
+        httpPort = HTTP_PORT
+        socksPort = SOCKS_PORT
+        httpOk = false
+        socksOk = false
     }
 }

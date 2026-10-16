@@ -15,6 +15,8 @@ class Socks5Server(private val port: Int) {
     private var serverSocket: ServerSocket? = null
     private val pool = Executors.newCachedThreadPool()
 
+    val boundPort: Int get() = serverSocket?.localPort ?: -1
+
     fun start() {
         val ss = ServerSocket()
         ss.reuseAddress = true
@@ -81,12 +83,15 @@ class Socks5Server(private val port: Int) {
             ins.read() // reserved
             val atyp = ins.read()
 
+            var numeric: InetAddress? = null
             val host: String
             when (atyp) {
                 1 -> {
                     val b = ByteArray(4)
                     readFully(ins, b)
-                    host = b.joinToString(".") { (it.toInt() and 0xff).toString() }
+                    val addr = InetAddress.getByAddress(b)
+                    numeric = addr
+                    host = addr.hostAddress ?: ""
                 }
                 3 -> {
                     val len = ins.read()
@@ -98,7 +103,9 @@ class Socks5Server(private val port: Int) {
                 4 -> {
                     val b = ByteArray(16)
                     readFully(ins, b)
-                    host = InetAddress.getByAddress(b).hostAddress ?: ""
+                    val addr = InetAddress.getByAddress(b)
+                    numeric = addr
+                    host = addr.hostAddress ?: ""
                 }
                 else -> return
             }
@@ -120,8 +127,10 @@ class Socks5Server(private val port: Int) {
             if (ip != null) ClientStats.noteHost(ip, host)
 
             val remote = Socket()
+            val target = numeric?.let { InetSocketAddress(it, dstPort) }
+                ?: InetSocketAddress(host, dstPort)
             try {
-                remote.connect(InetSocketAddress(host, dstPort), 15000)
+                remote.connect(target, 15000)
             } catch (_: Exception) {
                 outs.write(byteArrayOf(5, 5, 0, 1, 0, 0, 0, 0, 0, 0))
                 outs.flush()
