@@ -22,6 +22,9 @@ class ShareService : Service() {
     private var p2pManager: WifiP2pManager? = null
     private var p2pChannel: WifiP2pManager.Channel? = null
 
+    @Volatile
+    private var generation = 0
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -50,6 +53,7 @@ class ShareService : Service() {
     }
 
     private fun startMode(mode: String) {
+        generation++
         stopEngine()
         stopHotspotAndP2p()
         ConnectionRegistry.reset()
@@ -68,7 +72,8 @@ class ShareService : Service() {
     }
 
     private fun startLan() {
-        Thread { startEngine(resolveShareIp(ShareState.MODE_LAN)) }.start()
+        val gen = generation
+        Thread { startEngine(resolveShareIp(ShareState.MODE_LAN), gen) }.start()
     }
 
     private fun resolveShareIp(mode: String): String = when (mode) {
@@ -78,13 +83,18 @@ class ShareService : Service() {
         else -> Net.bestIp() ?: ""
     }
 
-    private fun startEngine(ip: String) {
+    private fun startEngine(ip: String, gen: Int) {
+        if (gen != generation) return
         if (ip.isBlank() || ip == "0.0.0.0") {
             fail("Uygun ağ arayüzü bulunamadı. Wi-Fi/hotspot açık mı?")
             return
         }
         val eng = ProxyEngine(ShareState.httpPort, ShareState.socksPort)
         eng.start()
+        if (gen != generation) {
+            eng.stop()
+            return
+        }
         engine = eng
         if (!eng.httpReady && !eng.socksReady) {
             engine = null
@@ -102,6 +112,7 @@ class ShareService : Service() {
     }
 
     private fun startHotspot() {
+        val gen = generation
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         if (wifi == null) {
             fail("Wi-Fi servisi bulunamadı")
@@ -111,6 +122,13 @@ class ShareService : Service() {
             wifi.startLocalOnlyHotspot(
                 object : WifiManager.LocalOnlyHotspotCallback() {
                     override fun onStarted(res: WifiManager.LocalOnlyHotspotReservation) {
+                        if (gen != generation) {
+                            try {
+                                res.close()
+                            } catch (_: Exception) {
+                            }
+                            return
+                        }
                         reservation = res
                         var ssid: String? = null
                         var pass: String? = null
@@ -130,11 +148,11 @@ class ShareService : Service() {
                         }
                         ShareState.ssid = ssid
                         ShareState.password = pass
-                        Thread { startEngine(resolveShareIp(ShareState.MODE_HOTSPOT)) }.start()
+                        Thread { startEngine(resolveShareIp(ShareState.MODE_HOTSPOT), gen) }.start()
                     }
 
                     override fun onFailed(reason: Int) {
-                        fail("Hotspot başlatılamadı (kod $reason)")
+                        if (gen == generation) fail("Hotspot başlatılamadı (kod $reason)")
                     }
 
                     override fun onStopped() {
@@ -143,11 +161,12 @@ class ShareService : Service() {
                 Handler(mainLooper)
             )
         } catch (e: Exception) {
-            fail("Hotspot hatası: ${e.message}")
+            if (gen == generation) fail("Hotspot hatası: ${e.message}")
         }
     }
 
     private fun startP2p() {
+        val gen = generation
         val manager = applicationContext.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
         if (manager == null) {
             fail("Wi-Fi Direct desteklenmiyor")
@@ -159,17 +178,27 @@ class ShareService : Service() {
 
         manager.createGroup(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
+                if (gen != generation) {
+                    try {
+                        manager.removeGroup(channel, null)
+                    } catch (_: Exception) {
+                    }
+                    return
+                }
                 manager.requestGroupInfo(channel) { group ->
+                    if (gen != generation) return@requestGroupInfo
                     if (group != null) {
                         ShareState.ssid = group.networkName
                         ShareState.password = group.passphrase
                     }
-                    Thread { startEngine(resolveShareIp(ShareState.MODE_P2P)) }.start()
+                    Thread { startEngine(resolveShareIp(ShareState.MODE_P2P), gen) }.start()
                 }
             }
 
             override fun onFailure(reason: Int) {
-                fail("Wi-Fi Direct başlatılamadı (kod $reason). Tekrar deneyin.")
+                if (gen == generation) {
+                    fail("Wi-Fi Direct başlatılamadı (kod $reason). Tekrar deneyin.")
+                }
             }
         })
     }
@@ -206,6 +235,7 @@ class ShareService : Service() {
     }
 
     private fun stopEverything() {
+        generation++
         stopEngine()
         stopHotspotAndP2p()
         ConnectionRegistry.reset()
