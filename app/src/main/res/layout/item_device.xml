@@ -24,7 +24,5 @@
         android:minWidth="0dp"
         android:minHeight="0dp"
         android:text="@string/block"
-        android:textSize="11sp"
-        app:insetBottom="6dp"
-        app:insetTop="6dp" />
+        android:textSize="11sp" />
 </LinearLayout>
