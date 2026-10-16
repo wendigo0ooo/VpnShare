@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VPN Share</string>
+    <string name="title">VPN Bağlantısı Paylaş</string>
+    <string name="desc">Telefonundaki interneti (VPN dahil) aynı ağdaki diğer cihazlarla paylaş.</string>
+    <string name="start">BAŞLAT</string>
+    <string name="stop">DURDUR</string>
+    <string name="status_running">Durum: ÇALIŞIYOR</string>
+    <string name="status_stopped">Durum: durduruldu</string>
+    <string name="info_text">Diğer cihazın Wi-Fi proxy ayarına şunu yaz:\n\nHTTP proxy:   %1$s:%2$d\nSOCKS5 proxy: %1$s:%3$d\n\nTelefonda VPN açıkken paylaşılan cihaz, VPN’in IP ve DNS’ini kullanır.</string>
+    <string name="notif_title">VPN Share çalışıyor</string>
+    <string name="notif_text">%1$s  •  HTTP %2$d  •  SOCKS5 %3$d</string>
+    <string name="hint">İpucu: Mobil veriyle paylaşmak için önce Wi-Fi erişim noktası (hotspot) aç. Cihazlar aynı ağda olmalı.</string>
+</resources>
