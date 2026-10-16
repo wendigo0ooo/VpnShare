@@ -72,40 +72,8 @@ class Socks5Server(private val port: Int) {
             val methods = ByteArray(nMethods)
             readFully(ins, methods)
 
-            if (ProxyAuth.enabled) {
-                if (!methods.contains(0x02.toByte())) {
-                    outs.write(byteArrayOf(5, 0xFF.toByte()))
-                    outs.flush()
-                    return
-                }
-                outs.write(byteArrayOf(5, 0x02))
-                outs.flush()
-
-                val authVer = ins.read()
-                if (authVer != 1) return
-                val uLen = ins.read()
-                if (uLen <= 0) return
-                val uBuf = ByteArray(uLen)
-                readFully(ins, uBuf)
-                val pLen = ins.read()
-                if (pLen <= 0) return
-                val pBuf = ByteArray(pLen)
-                readFully(ins, pBuf)
-
-                val user = String(uBuf, Charsets.UTF_8)
-                val pass = String(pBuf, Charsets.UTF_8)
-                if (ProxyAuth.check(user, pass)) {
-                    outs.write(byteArrayOf(1, 0))
-                    outs.flush()
-                } else {
-                    outs.write(byteArrayOf(1, 1))
-                    outs.flush()
-                    return
-                }
-            } else {
-                outs.write(byteArrayOf(5, 0))
-                outs.flush()
-            }
+            outs.write(byteArrayOf(5, 0))
+            outs.flush()
 
             val rVersion = ins.read()
             if (rVersion != 5) return

@@ -1,6 +1,5 @@
 package com.wendigo0ooo.vpnshare
 
-import android.util.Base64
 import java.io.BufferedInputStream
 import java.io.InputStream
 import java.io.OutputStream
@@ -87,11 +86,6 @@ class HttpProxyServer(private val port: Int) {
                 }
             }
 
-            if (!authOk(headers)) {
-                writeAuthRequired(outs)
-                return
-            }
-
             if (method.equals("CONNECT", ignoreCase = true)) {
                 val (host, dstPort) = splitHostPort(target, 443)
                 if (ip != null) ClientStats.noteHost(ip, host)
@@ -155,34 +149,6 @@ class HttpProxyServer(private val port: Int) {
                 Relay.closeQuietly(client)
                 finish()
             }
-        }
-    }
-
-    private fun authOk(headers: List<Pair<String, String>>): Boolean {
-        if (!ProxyAuth.enabled) return true
-        val value = headers.firstOrNull { it.first.equals("Proxy-Authorization", ignoreCase = true) }
-            ?.second ?: return false
-        if (!value.startsWith("Basic ", ignoreCase = true)) return false
-        val decoded = try {
-            String(Base64.decode(value.substring(6).trim(), Base64.DEFAULT))
-        } catch (_: Exception) {
-            return false
-        }
-        val idx = decoded.indexOf(':')
-        if (idx < 0) return false
-        return ProxyAuth.check(decoded.substring(0, idx), decoded.substring(idx + 1))
-    }
-
-    private fun writeAuthRequired(outs: OutputStream) {
-        try {
-            outs.write(
-                ("HTTP/1.1 407 Proxy Authentication Required\r\n" +
-                    "Proxy-Authenticate: Basic realm=\"vpnshare\"\r\n" +
-                    "Content-Length: 0\r\n" +
-                    "Connection: close\r\n\r\n").toByteArray()
-            )
-            outs.flush()
-        } catch (_: Exception) {
         }
     }
 

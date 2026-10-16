@@ -31,12 +31,6 @@
     <string name="unblock">Aç</string>
     <string name="blocked_suffix"> (engellendi)</string>
 
-    <string name="security_title">Güvenlik</string>
-    <string name="auth_switch">Proxy şifre istesin</string>
-    <string name="hint_user">Kullanıcı adı</string>
-    <string name="hint_pass">Parola</string>
-    <string name="auth_note">Açıkken istemcide proxy kullanıcı adı/parola da girilmelidir.</string>
-
     <string name="howto">Nasıl bağlanılır:\n1) İstemci cihazı gösterilen ağa bağla.\n2) Cihazın Wi-Fi proxy ayarını MANUEL yap.\n3) Adres ve portu yukarıdaki gibi gir.\n\nVPN paylaşımı için VPN uygulamanda “LAN/yerel ağ” erişimini aç.</string>
 
     <string name="notif_title">VPN Share çalışıyor</string>

@@ -2,7 +2,6 @@ package com.wendigo0ooo.vpnshare
 
 import android.Manifest
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -10,8 +9,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -20,9 +17,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
-import com.google.android.material.materialswitch.MaterialSwitch
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import java.util.Locale
@@ -40,13 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var trafficText: TextView
     private lateinit var devicesContainer: LinearLayout
     private lateinit var resetDevices: MaterialButton
-    private lateinit var authSwitch: MaterialSwitch
-    private lateinit var userField: TextInputEditText
-    private lateinit var passField: TextInputEditText
-    private lateinit var userLayout: TextInputLayout
-    private lateinit var passLayout: TextInputLayout
 
-    private lateinit var prefs: SharedPreferences
     private var lastDeviceSig = ""
 
     private var prevDown = 0L
@@ -76,23 +64,6 @@ class MainActivity : AppCompatActivity() {
         trafficText = findViewById(R.id.trafficText)
         devicesContainer = findViewById(R.id.devicesContainer)
         resetDevices = findViewById(R.id.resetDevices)
-        authSwitch = findViewById(R.id.authSwitch)
-        userField = findViewById(R.id.userField)
-        passField = findViewById(R.id.passField)
-        userLayout = findViewById(R.id.userLayout)
-        passLayout = findViewById(R.id.passLayout)
-
-        prefs = getSharedPreferences("vpnshare", MODE_PRIVATE)
-        loadAuthPrefs()
-
-        authSwitch.setOnCheckedChangeListener { _, _ -> applyAuth() }
-        val watcher = object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) = applyAuth()
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        }
-        userField.addTextChangedListener(watcher)
-        passField.addTextChangedListener(watcher)
 
         resetDevices.setOnClickListener {
             ClientStats.reset()
@@ -108,7 +79,6 @@ class MainActivity : AppCompatActivity() {
                     Intent(this, ShareService::class.java).setAction(ShareService.ACTION_STOP)
                 )
             } else {
-                applyAuth()
                 lastDeviceSig = ""
                 val mode = when (modeGroup.checkedButtonId) {
                     R.id.modeHotspot -> ShareState.MODE_HOTSPOT
@@ -134,34 +104,6 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(refresh)
-    }
-
-    private fun loadAuthPrefs() {
-        authSwitch.isChecked = prefs.getBoolean(KEY_ENABLED, false)
-        userField.setText(prefs.getString(KEY_USER, ""))
-        passField.setText(prefs.getString(KEY_PASS, ""))
-        updateAuthFields()
-        applyAuth()
-    }
-
-    private fun updateAuthFields() {
-        val on = authSwitch.isChecked
-        userLayout.isEnabled = on
-        passLayout.isEnabled = on
-        userField.isEnabled = on
-        passField.isEnabled = on
-    }
-
-    private fun applyAuth() {
-        updateAuthFields()
-        ProxyAuth.enabled = authSwitch.isChecked
-        ProxyAuth.username = userField.text?.toString()?.trim() ?: ""
-        ProxyAuth.password = passField.text?.toString() ?: ""
-        prefs.edit()
-            .putBoolean(KEY_ENABLED, ProxyAuth.enabled)
-            .putString(KEY_USER, ProxyAuth.username)
-            .putString(KEY_PASS, ProxyAuth.password)
-            .apply()
     }
 
     private fun requestPermissions() {
@@ -376,11 +318,5 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             null
         }
-    }
-
-    companion object {
-        private const val KEY_ENABLED = "auth_enabled"
-        private const val KEY_USER = "auth_user"
-        private const val KEY_PASS = "auth_pass"
     }
 }
