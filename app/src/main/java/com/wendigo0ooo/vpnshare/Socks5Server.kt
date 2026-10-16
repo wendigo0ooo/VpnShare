@@ -44,10 +44,20 @@ class Socks5Server(private val port: Int) {
     }
 
     private fun handle(client: Socket, ip: String?) {
-        if (ip != null) ClientStats.onOpen(ip)
+        if (BlockList.isBlocked(ip)) {
+            Relay.closeQuietly(client)
+            return
+        }
+        if (ip != null) {
+            ClientStats.onOpen(ip)
+            ConnectionRegistry.register(ip, client)
+        }
         val counted = AtomicBoolean(false)
         val finish: () -> Unit = {
-            if (counted.compareAndSet(false, true) && ip != null) ClientStats.onClose(ip)
+            if (counted.compareAndSet(false, true) && ip != null) {
+                ClientStats.onClose(ip)
+                ConnectionRegistry.unregister(ip, client)
+            }
         }
         var relayed = false
         try {
@@ -61,8 +71,41 @@ class Socks5Server(private val port: Int) {
             if (nMethods <= 0) return
             val methods = ByteArray(nMethods)
             readFully(ins, methods)
-            outs.write(byteArrayOf(5, 0))
-            outs.flush()
+
+            if (ProxyAuth.enabled) {
+                if (!methods.contains(0x02.toByte())) {
+                    outs.write(byteArrayOf(5, 0xFF.toByte()))
+                    outs.flush()
+                    return
+                }
+                outs.write(byteArrayOf(5, 0x02))
+                outs.flush()
+
+                val authVer = ins.read()
+                if (authVer != 1) return
+                val uLen = ins.read()
+                if (uLen <= 0) return
+                val uBuf = ByteArray(uLen)
+                readFully(ins, uBuf)
+                val pLen = ins.read()
+                if (pLen <= 0) return
+                val pBuf = ByteArray(pLen)
+                readFully(ins, pBuf)
+
+                val user = String(uBuf, Charsets.UTF_8)
+                val pass = String(pBuf, Charsets.UTF_8)
+                if (ProxyAuth.check(user, pass)) {
+                    outs.write(byteArrayOf(1, 0))
+                    outs.flush()
+                } else {
+                    outs.write(byteArrayOf(1, 1))
+                    outs.flush()
+                    return
+                }
+            } else {
+                outs.write(byteArrayOf(5, 0))
+                outs.flush()
+            }
 
             val rVersion = ins.read()
             if (rVersion != 5) return
@@ -101,7 +144,6 @@ class Socks5Server(private val port: Int) {
                 outs.flush()
                 return
             }
-
             if (host.isEmpty()) {
                 outs.write(byteArrayOf(5, 4, 0, 1, 0, 0, 0, 0, 0, 0))
                 outs.flush()

@@ -83,6 +83,10 @@ object ClientStats {
 
     fun totalCount(): Int = map.size
 
+    fun totalDown(): Long = map.values.sumOf { it.down.get() }
+
+    fun totalUp(): Long = map.values.sumOf { it.up.get() }
+
     fun reset() = map.clear()
 
     private fun resolveHostname(info: ClientInfo) {

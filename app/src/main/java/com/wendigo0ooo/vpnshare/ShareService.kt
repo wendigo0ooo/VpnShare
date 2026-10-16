@@ -48,6 +48,8 @@ class ShareService : Service() {
     private fun startMode(mode: String) {
         stopEngine()
         stopHotspotAndP2p()
+        ConnectionRegistry.reset()
+        BlockList.reset()
         ClientStats.reset()
         ShareState.reset()
         ShareState.mode = mode
@@ -191,6 +193,8 @@ class ShareService : Service() {
     private fun stopEverything() {
         stopEngine()
         stopHotspotAndP2p()
+        ConnectionRegistry.reset()
+        BlockList.reset()
         ShareState.reset()
         ClientStats.reset()
     }

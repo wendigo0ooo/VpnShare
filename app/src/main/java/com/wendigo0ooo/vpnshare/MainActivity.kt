@@ -2,6 +2,7 @@ package com.wendigo0ooo.vpnshare
 
 import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -9,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -17,6 +20,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import java.util.Locale
@@ -31,9 +37,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var qrImage: ImageView
     private lateinit var qrHint: TextView
     private lateinit var devicesSummary: TextView
+    private lateinit var trafficText: TextView
     private lateinit var devicesContainer: LinearLayout
+    private lateinit var resetDevices: MaterialButton
+    private lateinit var authSwitch: MaterialSwitch
+    private lateinit var userField: TextInputEditText
+    private lateinit var passField: TextInputEditText
+    private lateinit var userLayout: TextInputLayout
+    private lateinit var passLayout: TextInputLayout
 
+    private lateinit var prefs: SharedPreferences
     private var lastDeviceSig = ""
+
+    private var prevDown = 0L
+    private var prevUp = 0L
+    private var prevTime = 0L
 
     private val handler = Handler(Looper.getMainLooper())
     private val refresh = object : Runnable {
@@ -55,7 +73,32 @@ class MainActivity : AppCompatActivity() {
         qrImage = findViewById(R.id.qrImage)
         qrHint = findViewById(R.id.qrHint)
         devicesSummary = findViewById(R.id.devicesSummary)
+        trafficText = findViewById(R.id.trafficText)
         devicesContainer = findViewById(R.id.devicesContainer)
+        resetDevices = findViewById(R.id.resetDevices)
+        authSwitch = findViewById(R.id.authSwitch)
+        userField = findViewById(R.id.userField)
+        passField = findViewById(R.id.passField)
+        userLayout = findViewById(R.id.userLayout)
+        passLayout = findViewById(R.id.passLayout)
+
+        prefs = getSharedPreferences("vpnshare", MODE_PRIVATE)
+        loadAuthPrefs()
+
+        authSwitch.setOnCheckedChangeListener { _, _ -> applyAuth() }
+        val watcher = object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) = applyAuth()
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        }
+        userField.addTextChangedListener(watcher)
+        passField.addTextChangedListener(watcher)
+
+        resetDevices.setOnClickListener {
+            ClientStats.reset()
+            lastDeviceSig = ""
+            updateUi()
+        }
 
         requestPermissions()
 
@@ -65,6 +108,7 @@ class MainActivity : AppCompatActivity() {
                     Intent(this, ShareService::class.java).setAction(ShareService.ACTION_STOP)
                 )
             } else {
+                applyAuth()
                 lastDeviceSig = ""
                 val mode = when (modeGroup.checkedButtonId) {
                     R.id.modeHotspot -> ShareState.MODE_HOTSPOT
@@ -90,6 +134,34 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(refresh)
+    }
+
+    private fun loadAuthPrefs() {
+        authSwitch.isChecked = prefs.getBoolean(KEY_ENABLED, false)
+        userField.setText(prefs.getString(KEY_USER, ""))
+        passField.setText(prefs.getString(KEY_PASS, ""))
+        updateAuthFields()
+        applyAuth()
+    }
+
+    private fun updateAuthFields() {
+        val on = authSwitch.isChecked
+        userLayout.isEnabled = on
+        passLayout.isEnabled = on
+        userField.isEnabled = on
+        passField.isEnabled = on
+    }
+
+    private fun applyAuth() {
+        updateAuthFields()
+        ProxyAuth.enabled = authSwitch.isChecked
+        ProxyAuth.username = userField.text?.toString()?.trim() ?: ""
+        ProxyAuth.password = passField.text?.toString() ?: ""
+        prefs.edit()
+            .putBoolean(KEY_ENABLED, ProxyAuth.enabled)
+            .putString(KEY_USER, ProxyAuth.username)
+            .putString(KEY_PASS, ProxyAuth.password)
+            .apply()
     }
 
     private fun requestPermissions() {
@@ -166,7 +238,32 @@ class MainActivity : AppCompatActivity() {
             hideQr()
         }
 
+        updateTraffic()
         renderDevices()
+    }
+
+    private fun updateTraffic() {
+        val curDown = ClientStats.totalDown()
+        val curUp = ClientStats.totalUp()
+        val now = System.currentTimeMillis()
+        var downSpeed = 0L
+        var upSpeed = 0L
+        if (prevTime > 0 && now > prevTime) {
+            val dt = (now - prevTime) / 1000.0
+            downSpeed = ((curDown - prevDown) / dt).toLong().coerceAtLeast(0)
+            upSpeed = ((curUp - prevUp) / dt).toLong().coerceAtLeast(0)
+        }
+        prevDown = curDown
+        prevUp = curUp
+        prevTime = now
+
+        trafficText.text = getString(
+            R.string.traffic_summary,
+            fmtBytes(curDown),
+            fmtBytes(curUp),
+            fmtBytes(downSpeed),
+            fmtBytes(upSpeed)
+        )
     }
 
     private fun hideQr() {
@@ -182,7 +279,8 @@ class MainActivity : AppCompatActivity() {
             for (c in list) {
                 append(c.ip).append(c.down.get()).append(c.up.get())
                     .append(c.active.get()).append(c.connections.get())
-                    .append(c.type).append(c.hostname).append('|')
+                    .append(c.type).append(c.hostname)
+                    .append(BlockList.isBlocked(c.ip)).append('|')
             }
         }
         if (sig == lastDeviceSig) return
@@ -196,31 +294,52 @@ class MainActivity : AppCompatActivity() {
         devicesContainer.removeAllViews()
 
         if (list.isEmpty()) {
-            devicesContainer.addView(makeRow(getString(R.string.devices_empty), false))
+            val tv = TextView(this)
+            tv.text = getString(R.string.devices_empty)
+            tv.textSize = 13f
+            devicesContainer.addView(tv)
             return
         }
         for (c in list) {
-            val name = c.hostname ?: c.type ?: "Bilinmiyor"
-            val text = getString(
-                R.string.conn_info,
-                c.ip,
-                name,
-                fmtBytes(c.down.get()),
-                fmtBytes(c.up.get()),
-                c.connections.get()
-            )
-            devicesContainer.addView(makeRow(text, c.active.get() > 0))
+            addDeviceRow(c)
         }
     }
 
-    private fun makeRow(text: String, active: Boolean): TextView {
-        val tv = TextView(this)
-        tv.text = text
-        tv.textSize = 13f
-        val pad = (8 * resources.displayMetrics.density).toInt()
-        tv.setPadding(0, pad, 0, pad)
-        tv.setTextColor(if (active) 0xFF1B5E20.toInt() else 0xFF555555.toInt())
-        return tv
+    private fun addDeviceRow(c: ClientInfo) {
+        val row = layoutInflater.inflate(R.layout.item_device, devicesContainer, false)
+        val text = row.findViewById<TextView>(R.id.rowText)
+        val button = row.findViewById<MaterialButton>(R.id.rowButton)
+
+        val blocked = BlockList.isBlocked(c.ip)
+        val name = c.hostname ?: c.type ?: "Bilinmiyor"
+        var label = getString(
+            R.string.conn_info,
+            c.ip,
+            name,
+            fmtBytes(c.down.get()),
+            fmtBytes(c.up.get()),
+            c.connections.get()
+        )
+        if (blocked) label += getString(R.string.blocked_suffix)
+        text.text = label
+        text.setTextColor(
+            when {
+                blocked -> 0xFFB71C1C.toInt()
+                c.active.get() > 0 -> 0xFF1B5E20.toInt()
+                else -> 0xFF555555.toInt()
+            }
+        )
+        button.text = getString(if (blocked) R.string.unblock else R.string.block)
+        button.setOnClickListener {
+            if (BlockList.isBlocked(c.ip)) {
+                BlockList.unblock(c.ip)
+            } else {
+                BlockList.block(c.ip)
+            }
+            lastDeviceSig = ""
+            updateUi()
+        }
+        devicesContainer.addView(row)
     }
 
     private fun escapeWifi(value: String): String {
@@ -257,5 +376,11 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    companion object {
+        private const val KEY_ENABLED = "auth_enabled"
+        private const val KEY_USER = "auth_user"
+        private const val KEY_PASS = "auth_pass"
     }
 }

@@ -25,6 +25,17 @@
     <string name="devices_summary">%1$d aktif · toplam %2$d cihaz</string>
     <string name="devices_empty">Henüz bağlanan cihaz yok.</string>
     <string name="conn_info">%1$s • %2$s\n↓ %3$s   ↑ %4$s   • %5$d bağlantı</string>
+    <string name="traffic_summary">Toplam ↓ %1$s   ↑ %2$s      Hız ↓ %3$s/s   ↑ %4$s/s</string>
+    <string name="reset_devices">Sıfırla</string>
+    <string name="block">Kes</string>
+    <string name="unblock">Aç</string>
+    <string name="blocked_suffix"> (engellendi)</string>
+
+    <string name="security_title">Güvenlik</string>
+    <string name="auth_switch">Proxy şifre istesin</string>
+    <string name="hint_user">Kullanıcı adı</string>
+    <string name="hint_pass">Parola</string>
+    <string name="auth_note">Açıkken istemcide proxy kullanıcı adı/parola da girilmelidir.</string>
 
     <string name="howto">Nasıl bağlanılır:\n1) İstemci cihazı gösterilen ağa bağla.\n2) Cihazın Wi-Fi proxy ayarını MANUEL yap.\n3) Adres ve portu yukarıdaki gibi gir.\n\nVPN paylaşımı için VPN uygulamanda “LAN/yerel ağ” erişimini aç.</string>
 
